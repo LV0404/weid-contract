@@ -2,7 +2,7 @@ pragma solidity ^0.4.25;
 pragma experimental ABIEncoderV2;
 
 /*
- *       Copyright© (2018-2020) WeBank Co., Ltd.
+ *       Copyright@ (2018-2020) WeBank Co., Ltd.
  *
  *       This file is part of weidentity-contract.
  *
@@ -59,6 +59,8 @@ contract EvidenceContract {
 
     /**
      * Create evidence. Here, hash value is the key; signature and log are values. 
+     * This will only create a new evidence if its hash does not exist. If it does exist,
+     * please use the createEvidenceAllowDuplicates() function.
      */
     function createEvidence(
         bytes32[] hash,
@@ -78,8 +80,50 @@ contract EvidenceContract {
         uint256[] memory previousBlocks = new uint256[](sigSize);
         for (uint256 i = 0; i < sigSize; i++) {
             bytes32 thisHash = hash[i];
-            if (isEqualString(sigs[i], "") && !isHashExist(thisHash)) {
-                continue;
+            if (!isHashExist(thisHash)) {
+                if (isEqualString(sigs[i], "")) {
+                    // this record is a pure log event while hash does not exist, hence skipped
+                    continue;
+                }
+                hashs[i] = thisHash;
+                sigss[i] = sigs[i];
+                logss[i] = logs[i];
+                signers[i] = signer[i];
+                updateds[i] = updated[i];
+                previousBlocks[i] = changed[thisHash];
+                changed[thisHash] = block.number;
+            }
+        }
+        emit EvidenceAttributeChanged(hashs, signers, sigss, logss, updateds, previousBlocks);
+    }
+
+    /**
+     * Create evidence. Here, hash value is the key; signature and log are values. 
+     * This will emit creation events no matter evidence exists or not.
+     */
+    function createEvidenceAllowDuplicates(
+        bytes32[] hash,
+        address[] signer,
+        string[] sigs,
+        string[] logs,
+        uint256[] updated
+    )
+        public
+    {
+        uint256 sigSize = hash.length;
+        bytes32[] memory hashs = new bytes32[](sigSize);
+        string[] memory sigss = new string[](sigSize);
+        string[] memory logss = new string[](sigSize);
+        address[] memory signers = new address[](sigSize);
+        uint256[] memory updateds = new uint256[](sigSize);
+        uint256[] memory previousBlocks = new uint256[](sigSize);
+        for (uint256 i = 0; i < sigSize; i++) {
+            bytes32 thisHash = hash[i];
+            if (isEqualString(sigs[i], "")) {
+                if (!isHashExist(thisHash)) {
+                    // this record is a pure log event & hash does not exist, hence skipped
+                    continue;
+                }
             }
             hashs[i] = thisHash;
             sigss[i] = sigs[i];
@@ -93,7 +137,11 @@ contract EvidenceContract {
     }
 
     /**
-     * Create evidence by extra key. As in the normal createEvidence case, this further allocates each evidence with an extra key in String format which caller can use to obtain the detailed info from within.
+     * Create evidence by extra key. As in the normal createEvidence case, this further allocates
+     * each evidence with an extra key in String format which caller can fetch as key,
+     * to obtain the detailed info from within.
+     * This will only create a new evidence if its hash does not exist. If it does exist,
+     * please use the createEvidenceWithExtraKeyAllowDuplicates() function.
      */
     function createEvidenceWithExtraKey(
         bytes32[] hash,
@@ -114,8 +162,56 @@ contract EvidenceContract {
         uint256[] memory previousBlocks = new uint256[](sigSize);
         for (uint256 i = 0; i < sigSize; i++) {
             bytes32 thisHash = hash[i];
-            if (isEqualString(sigs[i], "") && !isHashExist(thisHash)) {
-                continue;
+            if (!isHashExist(thisHash)) {
+                if (isEqualString(sigs[i], "")) {
+                    // this record is a pure log event while hash does not exist, hence skipped
+                    continue;
+                }
+                hashs[i] = thisHash;
+                sigss[i] = sigs[i];
+                logss[i] = logs[i];
+                signers[i] = signer[i];
+                updateds[i] = updated[i];
+                previousBlocks[i] = changed[thisHash];
+                changed[thisHash] = block.number;
+                if (!isEqualString(extraKey[i], "")) {
+                    extraKeyMapping[extraKey[i]] = thisHash;
+                }
+            }
+        }
+        emit EvidenceAttributeChanged(hashs, signers, sigss, logss, updateds, previousBlocks);
+    }
+
+    /**
+     * Create evidence by extra key. As in the normal createEvidence case, this further allocates
+     * each evidence with an extra key in String format which caller can fetch as key,
+     * to obtain the detailed info from within.
+     * This will emit creation events no matter evidence exists or not.
+     */
+    function createEvidenceWithExtraKeyAllowDuplicates(
+        bytes32[] hash,
+        address[] signer,
+        string[] sigs,
+        string[] logs,
+        uint256[] updated,
+        string[] extraKey
+    )
+        public
+    {
+        uint256 sigSize = hash.length;
+        bytes32[] memory hashs = new bytes32[](sigSize);
+        string[] memory sigss = new string[](sigSize);
+        string[] memory logss = new string[](sigSize);
+        address[] memory signers = new address[](sigSize);
+        uint256[] memory updateds = new uint256[](sigSize);
+        uint256[] memory previousBlocks = new uint256[](sigSize);
+        for (uint256 i = 0; i < sigSize; i++) {
+            bytes32 thisHash = hash[i];
+            if (isEqualString(sigs[i], "")) {
+                if (!isHashExist(thisHash)) {
+                    // this record is a pure log event & hash does not exist, hence skipped
+                    continue;
+                }
             }
             hashs[i] = thisHash;
             sigss[i] = sigs[i];
@@ -124,13 +220,15 @@ contract EvidenceContract {
             updateds[i] = updated[i];
             previousBlocks[i] = changed[thisHash];
             changed[thisHash] = block.number;
-            extraKeyMapping[extraKey[i]] = thisHash;
+            if (!isEqualString(extraKey[i], "")) {
+                extraKeyMapping[extraKey[i]] = thisHash;
+            }
         }
         emit EvidenceAttributeChanged(hashs, signers, sigss, logss, updateds, previousBlocks);
     }
-    
-     /**
-      * Set arbitrary extra attributes to any EXISTING evidence.
+
+    /**
+     * Set arbitrary extra attributes to any EXISTING evidence.
      */
     function setAttribute(
         bytes32[] hash,
@@ -163,7 +261,7 @@ contract EvidenceContract {
         emit EvidenceExtraAttributeChanged(hashs, signers, keys, values, updateds, previousBlocks);
     }
 
-    function isHashExist(bytes32 hash) public constant returns (bool) {
+    function isHashExist(bytes32 hash) public view returns (bool) {
         if (changed[hash] != 0) {
             return true;
         }
@@ -174,13 +272,13 @@ contract EvidenceContract {
         string extraKey
     )
         public
-        constant
+        view
         returns (bytes32)
     {
         return extraKeyMapping[extraKey];
     }
 
-    function isEqualString(string a, string b) private constant returns (bool) {	
+    function isEqualString(string a, string b) private pure returns (bool) {	
         if (bytes(a).length != bytes(b).length) {	
             return false;	
         } else {	
